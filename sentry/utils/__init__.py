@@ -88,7 +88,24 @@ def transform(value, stack=[], context=None):
         ret = 'cycle'
     transform_rec = lambda o: transform(o, stack + [value], context)
     if isinstance(value, (tuple, list, set, frozenset)):
-        ret = type(value)(transform_rec(o) for o in value)
+        try:
+            ret = type(value)(transform_rec(o) for o in value)
+        except TypeError:
+            #XXX Creation of namedtuples is tricky:
+            #
+            #>>> from collections import namedtuple
+            #>>> P = namedtuple('P', 'x y')
+            #>>> P(1, 2)
+            #P(x=1, y=2)
+            #>>> P((1, 2), 2)
+            #P(x=(1, 2), y=2)
+            #>>> P(a for a in [(1, 2), 2]) # Surprise, surprise!
+            #Traceback (most recent call last):
+            #  File "<stdin>", line 1, in <module>
+            #TypeError: __new__() takes exactly 3 arguments (2 given)
+            #
+            # Since a sequence is transformed, we just create a tuple
+            ret = tuple(transform_rec(o) for o in value)
     elif isinstance(value, uuid.UUID):
         ret = repr(value)
     elif isinstance(value, datetime.datetime):
@@ -96,7 +113,7 @@ def transform(value, stack=[], context=None):
     elif isinstance(value, datetime.date):
         ret = value.strftime('%Y-%m-%d')
     elif isinstance(value, dict):
-        ret = dict((k, transform_rec(v)) for k, v in value.iteritems())
+        ret = dict((transform_rec(k), transform_rec(v)) for k, v in value.iteritems())
     elif isinstance(value, unicode):
         ret = to_unicode(value)
     elif isinstance(value, str):
